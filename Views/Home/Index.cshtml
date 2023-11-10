@@ -4,20 +4,19 @@
 <ul id="itemList">
     @foreach (var rootItem in Model)
     {
-
         <li>
-
+            <button class="toggle" data-id="@rootItem.ID" data-expanded="true">+</button>
             <span class="item-name">@rootItem.NAME</span>
-            <button class="toggle" data-id="@rootItem.ID">Переключиться</button>
             <button class="edit" data-id="@rootItem.ID">Редактировать</button>
-            <button class="delete" data-id="@rootItem.ID">Удалить</button>
+            <button class="add-child" data-id="@rootItem.ID">Добавить значение</button>
+            <button class="delete-root" data-id="@rootItem.ID">Удалить корень</button>
             <ul class="child-items hidden">
-                @foreach (var childItem in Model)
+                @foreach (var childItem in rootItem.Children)
                 {
                     <li>
                         <span class="item-name">@childItem.NAME</span>
-                        <button class="edit" data-id="@childItem.ID">Редактировать</button>
-                        <button class="delete" data-id="@childItem.ID">Удалить</button>
+                        <button class="edit-child" data-id="@childItem.ID">Редактировать</button>
+                        <button class="delete-child" data-parent-id="@rootItem.ID" data-id="@childItem.ID">Удалить значение</button>
                     </li>
                 }
             </ul>
@@ -25,13 +24,31 @@
     }
 </ul>
 
-<button id="addItemButton">Добавить</button>
+<button class="add-hierarchy">Добавить иерархию</button>
 
-<!-- Модальное окно для добавления/редактирования -->
+<div id="myModalEdit" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>Редактировать</h2>
+        <form id="itemFormEdit" method="post">
+            <input type="hidden" id="itemIdEdit" name="ID" />
+            <input type="text" id="itemNameEdit" name="NAME" placeholder="Item Name" required />
+            <select id="parentItemEdit" name="PARENTID">
+                <option value="">None</option>
+                @foreach (var item in Model)
+                {
+                    <option value="@item.ID">@item.NAME</option>
+                }
+            </select>
+            <button type="submit" id="saveButtonEdit">Сохранить</button>
+        </form>
+    </div>
+</div>
+
 <div id="myModal" class="modal">
     <div class="modal-content">
         <span class="close">&times;</span>
-        <h2>Добавить/Редактировать</h2>
+        <h2>Добавить</h2>
         <form id="itemForm" method="post">
             <input type="hidden" id="itemId" name="ID" />
             <input type="text" id="itemName" name="NAME" placeholder="Item Name" required />
@@ -49,39 +66,111 @@
 
 @section Scripts {
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script>
-        $(document).ready(function () {
-            // Показать/скрыть дочерние элементы при нажатии на кнопку "Toggle"
-            $(".toggle").on("click", function () {
-                $(this).siblings(".child-items").toggleClass("hidden");
-            });
+    <script>$(document).ready(function () {
 
-            // Показать модальное окно для добавления нового элемента
-            $("#addItemButton").on("click", function () {
+    $(".child-items").hide();
+
+    $(".toggle").on("click", function () {
+        var itemId = $(this).data("id");
+        var expanded = $(this).data("expanded");
+        var $childItems = $(this).siblings(".child-items");
+
+        if (expanded === "false") {
+            $(this).data("expanded", "true");
+            $childItems.show();
+            $(this).text("-");
+        } else {
+            $(this).data("expanded", "false");
+            $childItems.hide();
+            $(this).text("+");
+        }
+    });
+
+    $("#addItemButton").on("click", function () {
                 $("#itemId").val("");
                 $("#itemName").val("");
                 $("#parentItem").val("");
                 $("#myModal").show();
             });
 
-            // Показать модальное окно для редактирования элемента
-            $(".edit").on("click", function () {
-                var itemId = $(this).data("id");
-                var item = @Html.Raw(Json.Serialize(Model));
+    $("#itemFormEdit").submit(function (e) {
+        e.preventDefault();
+        var formData = $(this).serializeArray();
+
+        $.post("/Home/EditItem", formData, function (response) {
+            if (response.success) {
+                var itemId = formData.find(item => item.name === "ID").value;
+                var itemName = formData.find(item => item.name === "NAME").value;
+
+                $("#itemList li[data-id='" + itemId + "'] .item-name").text(itemName);
+                $("#myModalEdit").hide();
+            } else {
+            }
+        });
+    });
+
+
+    // Редактирование элемента
+    $(".edit").on("click", function () {
+        var itemId = $(this).data("id");
+
+        $.ajax({
+            url: "/Home/GetItemForEdit",
+            type: "POST",
+            data: { itemId: itemId },
+            dataType: "json",
+            success: function (item) {
                 if (item) {
-                    $("#itemId").val(item.ID);
-                    $("#itemName").val(item.NAME);
-                    $("#parentItem").val(item.PARENTID);
-                    $("#myModal").show();
+                    $("#itemIdEdit").val(item.ID);
+                    $("#itemNameEdit").val(item.NAME);
+                    $("#parentItemEdit").val(item.PARENTID);
+                    $("#myModalEdit").show();
                 }
+            },
+            error: function () {
+                // Обработка ошибки
+            }
+        });
+    });
+
+
+
+            // Закрытие модального окна редактирования при нажатии на крестик
+            $(".modal-content .close").on("click", function () {
+                $("#myModalEdit").hide();
             });
 
-            // Закрыть модальное окно при нажатии на крестик
+            // Отправка данных формы редактирования
+            $("#itemFormEdit").submit(function (e) {
+                e.preventDefault();
+                var formData = $(this).serializeArray();
+                $.post("/Home/EditItem", formData, function () {
+                    location.reload();
+                });
+            });
+
+            $(".add-child").on("click", function () {
+                var itemId = $(this).data("id");
+                $("#parentItem").val(itemId);
+                $("#itemId").val("");
+                $("#itemName").val("");
+                $("#myModal").show();
+            });
+
+
+            $(".add-hierarchy").on("click", function () {
+                var itemId = $(this).data("id");
+                $("#parentItem").val(itemId);
+                $("#itemId").val("");
+                $("#itemName").val("");
+                $("#myModal").show();
+            });
+
+
             $(".close").on("click", function () {
                 $("#myModal").hide();
             });
 
-            // Отправить данные формы при нажатии на кнопку "Save"
             $("#itemForm").submit(function (e) {
                 e.preventDefault();
                 var formData = $(this).serializeArray();
@@ -90,13 +179,19 @@
                 });
             });
 
-            // Обработка удаления элемента
-            $(".delete").on("click", function () {
-                var itemId = $(this).data("id");
-                $.post("/Home/DeleteItem", { itemId: itemId }, function () {
+    $(".delete-root").on("click", function () {
+        var itemId = $(this).data("id");
+        $(this).parent().remove();
+    });
+
+            $(".delete-child").on("click", function () {
+                var parentId = $(this).data("parent-id");
+                var childId = $(this).data("id");
+                $.post("/Home/DeleteChildItem", { parentId: parentId, childId: childId }, function () {
                     location.reload();
                 });
             });
-        });
-    </script>
+
+
+        });</script>
 }
